@@ -1,0 +1,50 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() { return request.auth != null; }
+    function userDoc() { return get(/databases/$(database)/documents/users/$(request.auth.uid)).data; }
+    function inFamily(familyId) {
+      return signedIn() && userDoc().familyId == familyId;
+    }
+    function isParent(familyId) {
+      return inFamily(familyId) && userDoc().role == 'PARENT';
+    }
+
+    // User identity/role/family links and all balance writes are backend-only.
+    match /users/{uid} {
+      allow read: if signedIn() && request.auth.uid == uid;
+      allow write: if false;
+    }
+    match /childInvites/{inviteHash} { allow read, write: if false; }
+    match /families/{familyId} {
+      allow read: if inFamily(familyId);
+      allow write: if false;
+      match /members/{uid} {
+        allow read: if inFamily(familyId);
+        allow write: if false;
+      }
+      match /children/{childId} {
+        allow read: if inFamily(familyId);
+        allow write: if false;
+      }
+      match /tasks/{taskId} {
+        allow read: if inFamily(familyId);
+        allow write: if false;
+      }
+      match /pointsLedger/{entryId} {
+        allow read: if isParent(familyId) || (inFamily(familyId) && resource.data.childId == userDoc().childId);
+        allow write: if false;
+      }
+      match /creditsLedger/{entryId} {
+        allow read: if isParent(familyId) || (inFamily(familyId) && resource.data.childId == userDoc().childId);
+        allow write: if false;
+      }
+      match /{document=**} {
+        allow read: if inFamily(familyId);
+        allow write: if false;
+      }
+    }
+    // No implicit access to unlisted root collections.
+    match /{document=**} { allow read, write: if false; }
+  }
+}

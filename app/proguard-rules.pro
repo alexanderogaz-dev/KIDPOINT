@@ -1,0 +1,1 @@
+-keep class cl.kidpoint.app.domain.model.** { *; }
